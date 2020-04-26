@@ -9,13 +9,14 @@ const messageHandler = require('../runtime/message-handler');
 // setting
 
 let setting = null;
+
 try {
   setting = JSON.parse(fs.readFileSync(`${__dirname}${path.sep}..${path.sep}runtime${path.sep}setting.json`));
 } catch (error) {
   setting = { token: 'SoZfHK9U5WWbruNMWw5v' };
 }
 
-// express configure
+// express
 
 let user = null;
 
@@ -116,92 +117,124 @@ const launchHttpServer = () => {
 
 // wechaty
 
-const robot = new Wechaty({ name: 'wechat-assistance' });
+let robot = null;
 
-const exit = () => {
-  robot.stop().then(() => {
+const startWechatyRobot = () => {
+  robot = new Wechaty({ name: 'wechat-assistance' });
+  eventListener();
+  return new Promise((resolve) => {
+    // TODO: bug - fail to start at the first time.
+    robot.start().then(() => {
+      log.info('wechaty::start');
+      resolve();
+    }).catch((error) => {
+      log.error('wechaty::start', error.toString());
+      process.exit(0);
+    });
+  });
+};
+
+const stopWechatyRobot = () => {
+  return new Promise((resolve) => {
+    robot.stop().then(() => {
+      robot = null;
+      log.info('wechaty::stop');
+      resolve();
+    }).catch((error) => {
+      log.error('wechaty::stop', error.toString());
+      process.exit(0);
+    });
+  });
+};
+
+const restartWechatyRobot = () => {
+  return stopWechatyRobot().then(startWechatyRobot);
+};
+
+const quit = () => {
+  return stopWechatyRobot().then(() => {
     process.exit(0);
   });
 };
 
-robot.on('scan', (qrcode, status) => {
-  if (status === ScanStatus.Waiting) {
-    const qrcodeImageUrl = [
-      'https://api.qrserver.com/v1/create-qr-code/?data=',
-      encodeURIComponent(qrcode),
-    ].join('');
-    log.info('wechaty::scan', '%s(%s) - %s', ScanStatus[status], status, qrcodeImageUrl);
-    return;
-  }
-  log.info('wechaty::scan', '%s(%s)', ScanStatus[status], status);
-  if (status === ScanStatus.Timeout) {
-    exit();
-  }
-});
+const eventListener = () => {
 
-robot.on('login', (u) => {
-  log.info('wechaty::login', 'login - {name: %s}', u.name());
-  if (setting.userAlias) {
-    robot.Contact.find({ alias: setting.userAlias }).then((contact) => {
-      if (contact) {
-        user = contact;
-        log.info('wechaty::login', 'user - {name: %s, alias: %s}', user.name(), setting.userAlias ? setting.userAlias : '');
-      } else {
+  robot.on('scan', (qrcode, status) => {
+    if (status === ScanStatus.Waiting) {
+      const qrcodeImageUrl = [
+        'https://api.qrserver.com/v1/create-qr-code/?data=',
+        encodeURIComponent(qrcode),
+      ].join('');
+      log.info('wechaty::scan', '%s(%s) - %s', ScanStatus[status], status, qrcodeImageUrl);
+      return;
+    }
+    log.info('wechaty::scan', '%s(%s)', ScanStatus[status], status);
+    if (status === ScanStatus.Timeout) {
+      quit();
+    }
+  });
+
+  robot.on('login', (u) => {
+    log.info('wechaty::login', 'login - {name: %s}', u.name());
+    if (setting.userAlias) {
+      robot.Contact.find({ alias: setting.userAlias }).then((contact) => {
+        if (contact) {
+          user = contact;
+          log.info('wechaty::login', 'user - {name: %s, alias: %s}', user.name(), setting.userAlias ? setting.userAlias : '');
+        } else {
+          user = u;
+          log.info('wechaty::login', 'user - {name: %s}', user.name());
+        }
+        launchHttpServer();
+      }).catch((error) => {
         user = u;
         log.info('wechaty::login', 'user - {name: %s}', user.name());
-      }
-      launchHttpServer();
-    }).catch((error) => {
+        log.warn('wechaty::login', 'warn - %s', error);
+        launchHttpServer();
+      });
+    } else {
       user = u;
       log.info('wechaty::login', 'user - {name: %s}', user.name());
-      log.warn('wechaty::login', 'warn - %s', error);
       launchHttpServer();
-    });
-  } else {
-    user = u;
-    log.info('wechaty::login', 'user - {name: %s}', user.name());
-    launchHttpServer();
-  }
-});
-
-robot.on('message', (message) => {
-  messageHandler(message, user, robot);
-});
-
-robot.on('friendship', (friendship) => {
-  const friendshipText = friendship.toJSON();
-  user.say(`好友申请\n\n${friendshipText}`).then(() => {
-    log.error('wechaty::friendship', 'forward - %s', friendshipText);
-  }).catch((error) => {
-    log.error('wechaty::friendship', error.toString());
+    }
   });
-});
 
-robot.on('room-invite', (roomInvitation) => {
-  // TODO: bug - event connot be emitted.
-  roomInvitation.toJSON().then((roomInvitationText) => {
-    user.say(`群聊邀请\n\n${roomInvitationText}`).then(() => {
-      log.error('wechaty::room-invite', 'forward - %s', roomInvitationText);
+  robot.on('message', (message) => {
+    messageHandler(message, user, robot);
+  });
+
+  robot.on('friendship', (friendship) => {
+    const friendshipText = friendship.toJSON();
+    user.say(`好友申请\n\n${friendshipText}`).then(() => {
+      log.error('wechaty::friendship', 'forward - %s', friendshipText);
+    }).catch((error) => {
+      log.error('wechaty::friendship', error.toString());
+    });
+  });
+
+  robot.on('room-invite', (roomInvitation) => {
+    // TODO: bug - event connot be emitted.
+    roomInvitation.toJSON().then((roomInvitationText) => {
+      user.say(`群聊邀请\n\n${roomInvitationText}`).then(() => {
+        log.error('wechaty::room-invite', 'forward - %s', roomInvitationText);
+      }).catch((error) => {
+        log.error('wechaty::room-invite', error.toString());
+      });
     }).catch((error) => {
       log.error('wechaty::room-invite', error.toString());
     });
-  }).catch((error) => {
-    log.error('wechaty::room-invite', error.toString());
   });
-});
 
-robot.on('error', (error) => {
-  log.info('wechaty::error', '%s', error.toString());
-});
+  robot.on('error', (error) => {
+    log.info('wechaty::error', '%s', error.toString());
+    restartWechatyRobot();
+  });
 
-robot.on('logout', () => {
-  log.info('wechaty::logout');
-  exit();
-});
+  robot.on('logout', () => {
+    log.info('wechaty::logout');
+    restartWechatyRobot();
+  });
 
-// TODO: bug - fail to start at the first time.
-robot.start().then(() => {
-  log.info('wechaty::start');
-}).catch((error) => {
-  log.error('wechaty::start', error.toString());
-});
+};
+
+startWechatyRobot();
