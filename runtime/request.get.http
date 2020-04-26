@@ -1,0 +1,4 @@
+// check running status
+
+Get http://127.0.0.1:3000/ HTTP/1.1
+Authorization: Basic OlNvWmZISzlVNVdXYnJ1Tk1XdzV2

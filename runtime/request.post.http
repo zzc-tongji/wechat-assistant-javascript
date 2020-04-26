@@ -1,0 +1,9 @@
+// send wechat message to user
+
+POST http://127.0.0.1:3000/ HTTP/1.1
+Content-Type: application/json
+
+{
+  "token": "SoZfHK9U5WWbruNMWw5v",
+  "text": "Hello world."
+}
