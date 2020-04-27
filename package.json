@@ -9,7 +9,7 @@
   },
   "repository": "git+https://github.com/zzc-tongji/wechat-assistant-javascript.git",
   "author": "Zhicheng Zhang",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/zzc-tongji/wechat-assistant-javascript/issues"
   },
